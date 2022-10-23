@@ -49,13 +49,13 @@ namespace TwitterStatistics.Services.Readers
                 {
                     while (!reader.EndOfStream)
                     {
-                        await ProcessSream(process, options, reader);
+                        await ProcessStream(process, options, reader);
                     }
                 }
             }
         }
 
-        private async Task ProcessSream(Action<Tweet> process, JsonSerializerOptions options, StreamReader reader)
+        private async Task ProcessStream(Action<Tweet> process, JsonSerializerOptions options, StreamReader reader)
         {
             var tweetsReceived = 0;
    
