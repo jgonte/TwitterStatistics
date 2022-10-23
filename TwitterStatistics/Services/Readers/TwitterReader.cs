@@ -14,6 +14,8 @@ namespace TwitterStatistics.Services.Readers
 
         private string _apiSecret;
 
+        private object _lock = new Object();
+
         public TwitterReader(string oauthUrl,
             string apiKey,
             string apiSecret)
@@ -47,31 +49,31 @@ namespace TwitterStatistics.Services.Readers
                 {
                     while (!reader.EndOfStream)
                     {
-                        await ProcessLine(process, options, reader);
+                        await ProcessSream(process, options, reader);
                     }
                 }
             }
         }
 
-        private static async Task ProcessLine(Action<Tweet> process, JsonSerializerOptions options, StreamReader reader)
+        private async Task ProcessSream(Action<Tweet> process, JsonSerializerOptions options, StreamReader reader)
         {
             var tweetsReceived = 0;
-
-            var line = await reader.ReadLineAsync();
-
+   
             var stopwatch = new Stopwatch();
 
             stopwatch.Start();
+
+            var line = await reader.ReadLineAsync();
+
 
             while (!string.IsNullOrWhiteSpace(line))
             {
                 ++tweetsReceived;
 
-                var tweetData = await JsonSerializer.DeserializeAsync<TweetWrapper>(
-                    new MemoryStream(Encoding.UTF8.GetBytes(line)),
-                    options);
+                ThreadPool.QueueUserWorkItem(ProcessLine, 
+                    new ProcessLineParams(process, options, line));
 
-                process(tweetData.Data);
+                //ProcessLine(process, options, line);
 
                 line = await reader.ReadLineAsync();
             }
@@ -79,6 +81,18 @@ namespace TwitterStatistics.Services.Readers
             stopwatch.Stop();
 
             Debug.WriteLine($"{tweetsReceived} tweets received in {stopwatch.ElapsedMilliseconds / 1000} seconds");
+        }
+
+        private void ProcessLine(object state)
+        {
+            var p = state as ProcessLineParams;
+
+            var tweetData = JsonSerializer.Deserialize<TweetWrapper>(p.Line, p.Options);
+            
+            lock(_lock)
+            {
+                p.Process(tweetData.Data);
+            }  
         }
 
         private async Task<string> GetAccessToken()
@@ -121,5 +135,23 @@ namespace TwitterStatistics.Services.Readers
             public Tweet Data { get; set; }
         }
 
+    }
+
+    internal class ProcessLineParams
+    {
+        public Action<Tweet> Process { get; private set; }
+
+        public JsonSerializerOptions Options { get; private set; }
+
+        public string Line { get; private set; }
+
+        public ProcessLineParams(Action<Tweet> process, JsonSerializerOptions options, string line)
+        {
+            Process = process;
+
+            Options = options;
+
+            Line = line;
+        }  
     }
 }
